@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>产品需求列表管理</title>
+<style>
+/* ========== [1] CSS 变量与主题 ========== */
+:root {
+  --primary: #3370ff;
+  --primary-dark: #2860e0;
+  --primary-weak: #eef3ff;
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --border: #e4e6eb;
+  --text: #1f2329;
+  --text-2: #646a73;
+  --text-3: #8f959e;
+  --success: #34a853;
+  --danger: #f54a45;
+  --warning: #ff8800;
+  --weekend-bg: #fafbfc;
+  --head-bg: #f8f9fb;
+  --today-bg: #f5f8ff;
+  --week-row-h: 34px;
+  --day-row-h: 42px;
+  --sticky-col-w: 280px;
+  --day-col-w: 116px;
+  --stat-col-w: 52px;
+}
+/* ========== [2] 基础 reset 与布局 ========== */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+main { flex: 1; overflow: hidden; position: relative; }
+/* ========== [3] 工具栏 / banner / toast ========== */
+.toolbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; background: var(--card);
+  border-bottom: 1px solid var(--border); flex-wrap: wrap;
+}
+.toolbar h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+.summary { color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.summary b { color: var(--text); }
+.spacer { flex: 1; }
+.btn {
+  border: 1px solid var(--border); background: #fff; color: var(--text);
+  border-radius: 6px; padding: 6px 13px; font-size: 13px; cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s; white-space: nowrap;
+  font-family: inherit;
+}
+.btn:hover { border-color: var(--primary); color: var(--primary); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn.primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); color: #fff; }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.danger:hover { background: #e03e39; color: #fff; }
+.banner {
+  background: #fff8e6; color: #9a6700; border-bottom: 1px solid #f0dca0;
+  padding: 7px 16px; font-size: 12px; line-height: 1.5;
+}
+.banner.hidden { display: none; }
+.toast {
+  position: fixed; left: 50%; bottom: 34px;
+  transform: translateX(-50%) translateY(16px);
+  background: #1f2329; color: #fff; padding: 8px 18px;
+  border-radius: 8px; font-size: 13px; opacity: 0;
+  pointer-events: none; transition: opacity .25s, transform .25s; z-index: 300;
+  max-width: 80vw;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.error { background: var(--danger); }
+/* ========== [4] 表格容器与 sticky 体系 ========== */
+.table-wrap { height: 100%; overflow: auto; background: var(--card); }
+#grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+#grid th, #grid td {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+.week-row th { position: sticky; top: 0; z-index: 20; height: var(--week-row-h); }
+.day-row th { position: sticky; top: var(--week-row-h); z-index: 20; height: var(--day-row-h); }
+th.corner {
+  position: sticky; left: 0; top: 0; z-index: 30;
+  width: var(--sticky-col-w); background: var(--head-bg);
+  text-align: left; padding: 0 12px; font-size: 13px; color: var(--text-2);
+}
+.req-cell {
+  position: sticky; left: 0; z-index: 10;
+  width: var(--sticky-col-w); min-width: var(--sticky-col-w); max-width: var(--sticky-col-w);
+  text-align: left; vertical-align: top; padding: 8px 10px;
+  border-right: 2px solid var(--border) !important;
+}
+.week-head {
+  font-size: 12px; font-weight: 600; text-align: center;
+  background: var(--head-bg); white-space: nowrap; overflow: hidden;
+}
+.week-head .range { font-weight: 400; color: var(--text-3); margin-left: 6px; font-size: 11px; }
+.week-head.current { background: var(--primary-weak); color: var(--primary); }
+.week-head.current .range { color: var(--primary); opacity: .75; }
+.day-head { font-size: 12px; text-align: center; background: #fff; color: var(--text-2); font-weight: 500; }
+.day-head span { display: block; font-size: 10px; color: var(--text-3); font-weight: 400; margin-top: 1px; }
+.day-head.weekend { background: var(--weekend-bg); }
+.day-head.today { color: var(--primary); background: var(--today-bg); box-shadow: inset 0 -2px 0 var(--primary); }
+.day-head.today span { color: var(--primary); }
+.stat-head { font-size: 11px; color: var(--text-3); text-align: center; background: var(--head-bg); font-weight: 400; }
+@keyframes flashBg { 0% { background: #d6e2ff; } 100% { background: var(--primary-weak); } }
+.week-head.flash { animation: flashBg .8s ease 2; }
+/* ========== [5] 单元格与状态 ========== */
+.day-cell {
+  vertical-align: top; padding: 5px 6px; height: 66px;
+  width: var(--day-col-w); min-width: var(--day-col-w); max-width: var(--day-col-w);
+}
+.day-cell input[type=checkbox] {
+  accent-color: var(--primary); width: 15px; height: 15px; cursor: pointer; margin: 0; display: block;
+}
+.day-cell .note {
+  margin-top: 4px; font-size: 12px; line-height: 1.45; color: var(--text-2);
+  cursor: text; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: break-all; white-space: pre-wrap;
+}
+.day-cell .note.empty { color: var(--text-3); opacity: .5; font-weight: 600; }
+.day-cell:hover .note.empty { opacity: 1; color: var(--primary); }
+.day-cell:hover { box-shadow: inset 0 0 0 1px var(--primary); }
+.day-cell.weekend { background: var(--weekend-bg); }
+.day-cell.today-col { background: var(--today-bg); }
+.day-cell.done { background: #f3fbf5; }
+.day-cell.done .note { color: var(--text); }
+.day-cell.future .note { color: var(--text-3); }
+.day-cell.future input[type=checkbox] { opacity: .55; }
+.day-cell.before-create { background: #f2f3f5; cursor: not-allowed; }
+.day-cell.before-create:hover { box-shadow: none; }
+.note-editor {
+  width: 100%; margin-top: 4px; border: 1px solid var(--primary); border-radius: 4px;
+  padding: 3px 5px; resize: none; outline: none; font: 12px/1.45 inherit; color: var(--text);
+  box-shadow: 0 0 0 2px rgba(51,112,255,.12);
+}
+.week-stat {
+  text-align: center; vertical-align: middle; background: #fcfcfd; padding: 0;
+  width: var(--stat-col-w); min-width: var(--stat-col-w); max-width: var(--stat-col-w);
+}
+.week-stat.full { background: #f6fdf8; }
+.chip {
+  display: inline-block; min-width: 34px; padding: 2px 5px;
+  border-radius: 10px; background: #f2f3f5; color: var(--text-3); font-size: 11px;
+}
+.chip.full { background: #e8f7ed; color: var(--success); font-weight: 600; }
+/* 首列需求格 */
+.req-top { display: flex; gap: 6px; align-items: flex-start; }
+.req-title {
+  font-weight: 600; font-size: 13px; line-height: 1.4; flex: 1;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  word-break: break-all;
+}
+.req-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.req-cell:hover .req-actions { opacity: 1; }
+.icon-btn {
+  border: none; background: transparent; cursor: pointer; font-size: 13px;
+  padding: 2px 4px; border-radius: 4px; color: var(--text-3); line-height: 1;
+}
+.icon-btn:hover { background: #f2f3f5; color: var(--primary); }
+.icon-btn.danger:hover { color: var(--danger); }
+.req-meta { display: flex; gap: 6px; align-items: center; margin-top: 5px; flex-wrap: wrap; }
+.proposer { color: var(--text-2); font-size: 12px; }
+.badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; line-height: 1.6; }
+.badge.prio-high { background: #ffeceb; color: var(--danger); }
+.badge.prio-medium { background: #fff3e0; color: var(--warning); }
+.badge.prio-low { background: #f2f3f5; color: var(--text-3); }
+.badge.st-doing { background: var(--primary-weak); color: var(--primary); }
+.badge.st-done { background: #e8f7ed; color: var(--success); }
+.badge.st-paused { background: #f2f3f5; color: var(--text-3); }
+.req-total { margin-top: 5px; color: var(--text-3); font-size: 11px; }
+.req-cell.row-done .req-title { color: var(--text-3); }
+#grid tbody tr:hover .req-cell { background: #f8faff; }
+/* ========== [6] 模态框与表单 ========== */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(15,23,42,.4);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal-mask.hidden { display: none; }
+.modal {
+  background: #fff; border-radius: 10px; padding: 20px 22px;
+  width: 480px; max-width: calc(100vw - 32px);
+  box-shadow: 0 8px 32px rgba(31,35,41,.16); max-height: 90vh; overflow: auto;
+}
+.modal.small { width: 400px; }
+.modal h3 { margin: 0 0 14px; font-size: 15px; }
+.modal label.field { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 12px; }
+.modal input[type=text], .modal input[type=date], .modal textarea, .modal select {
+  display: block; width: 100%; margin-top: 4px; border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 9px; font: 13px inherit; color: var(--text);
+  outline: none; background: #fff;
+}
+.modal textarea { resize: vertical; }
+.modal input:focus, .modal textarea:focus, .modal select:focus {
+  border-color: var(--primary); box-shadow: 0 0 0 2px rgba(51,112,255,.12);
+}
+.form-row { display: flex; gap: 12px; align-items: stretch; }
+.form-row label.field { flex: 1; }
+fieldset.prio {
+  border: 1px solid var(--border); border-radius: 6px; margin: 0 0 12px;
+  padding: 5px 10px 7px; flex: 1.2;
+}
+fieldset.prio legend { font-size: 12px; color: var(--text-2); padding: 0 4px; }
+.radio-group { display: flex; gap: 14px; font-size: 13px; color: var(--text); }
+.radio-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; margin: 0; }
+.radio-group input { accent-color: var(--primary); margin: 0; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.form-hint { font-size: 11px; color: var(--text-3); margin: -4px 0 4px; line-height: 1.5; }
+.req-star { color: var(--danger); }
+.confirm-msg { color: var(--text-2); line-height: 1.7; margin: 0 0 6px; word-break: break-all; }
+/* ========== [7] 空状态 ========== */
+.empty {
+  height: 100%; min-height: 380px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px; color: var(--text-2);
+}
+.empty-icon { font-size: 46px; }
+.empty h2 { margin: 4px 0 0; font-size: 16px; color: var(--text); }
+.empty p { margin: 0 0 8px; font-size: 13px; }
+/* ========== [8] 滚动条美化 ========== */
+.table-wrap::-webkit-scrollbar { width: 11px; height: 11px; }
+.table-wrap::-webkit-scrollbar-thumb { background: #d0d3d9; border-radius: 6px; border: 2px solid #fff; }
+.table-wrap::-webkit-scrollbar-thumb:hover { background: #b8bcc4; }
+.table-wrap::-webkit-scrollbar-track { background: #fff; }
+.table-wrap::-webkit-scrollbar-corner { background: #fff; }
+</style>
+</head>
+<body>
+
+<header class="toolbar">
+  <h1>📋 需求进度管理</h1>
+  <div class="summary" id="summary"></div>
+  <div class="spacer"></div>
+  <button class="btn primary" id="btnAdd">＋ 添加需求</button>
+  <button class="btn" id="btnLocate" title="滚动到当前周">⌖ 定位本周</button>
+  <button class="btn" id="btnExport" title="导出 JSON 备份">⬇ 导出</button>
+  <button class="btn" id="btnImport" title="从 JSON 备份导入">⬆ 导入</button>
+  <input type="file" id="fileImport" accept=".json,application/json" hidden>
+</header>
+<div class="banner hidden" id="banner"></div>
+<main>
+  <div class="table-wrap" id="tableWrap"></div>
+</main>
+
+<!-- 添加 / 编辑需求模态框 -->
+<div class="modal-mask hidden" id="reqModal">
+  <div class="modal">
+    <h3 id="reqModalTitle">添加需求</h3>
+    <form id="reqForm" novalidate>
+      <label class="field">需求描述 <span class="req-star">*</span>
+        <textarea name="title" rows="3" maxlength="200" placeholder="例如：支持批量导出月度报表"></textarea>
+      </label>
+      <div class="form-row">
+        <label class="field">提出人 <span class="req-star">*</span>
+          <input type="text" name="proposer" maxlength="30" placeholder="姓名">
+        </label>
+        <label class="field">创建日期
+          <input type="date" name="createdAt">
+        </label>
+      </div>
+      <div class="form-row">
+        <fieldset class="prio">
+          <legend>优先级</legend>
+          <div class="radio-group">
+            <label><input type="radio" name="priority" value="high"> 高</label>
+            <label><input type="radio" name="priority" value="medium" checked> 中</label>
+            <label><input type="radio" name="priority" value="low"> 低</label>
+          </div>
+        </fieldset>
+        <label class="field" style="flex:1">状态
+          <select name="status">
+            <option value="doing">进行中</option>
+            <option value="done">已完成</option>
+            <option value="paused">已暂停</option>
+          </select>
+        </label>
+      </div>
+      <p class="form-hint">创建日期决定该需求从哪一周开始出现在表格中（可补录历史需求，不能晚于今天）。</p>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close>取消</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+'use strict';
+
+/* ===== 1. CONFIG ===== */
+var STORAGE_KEY = 'prd-tracker:v1';
+var STICKY_COL_W = 280;
+var DOW_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+var PRIORITY = { high: '高', medium: '中', low: '低' };
+var STATUS = { doing: '进行中', done: '已完成', paused: '已暂停' };
+var DAY_MS = 86400000;
+
+/* ===== 2. utils（日期 / 转义 / id） ===== */
+function p2(n) { return String(n).padStart(2, '0'); }
+function toKey(d) { return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); }
+function fromKey(k) {
+  var a = String(k).split('-').map(Number);
+  return new Date(a[0], a[1] - 1, a[2]);
+}
+function addDays(d, n) { var t = new Date(d); t.setDate(t.getDate() + n); return t; }
+function startOfWeek(d) { // 周一为一周起点
+  var t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  t.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+  return t;
+}
+function todayKey() { return toKey(new Date()); }
+function md(d) { return p2(d.getMonth() + 1) + '/' + p2(d.getDate()); }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function uid() {
+  if (window.crypto && crypto.randomUUID) return 'r-' + crypto.randomUUID();
+  return 'r-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+function isValidDateKey(k) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(k))) return false;
+  var d = fromKey(k);
+  return !isNaN(d.getTime()) && toKey(d) === k;
+}
+function isoWeekOf(d) { // ISO 周号（周四规则），天然处理跨年
+  var t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7)); // 移到本周周四
+  var ys = new Date(t.getFullYear(), 0, 1);
+  return { year: t.getFullYear(), week: Math.round((t - ys) / (7 * DAY_MS)) + 1 };
+}
+
+/* ===== 3. storage（探测 / 读 / 写） ===== */
+var storageOK = true;
+function probeStorage() {
+  try {
+    localStorage.setItem('__probe__', '1');
+    localStorage.removeItem('__probe__');
+    return true;
+  } catch (e) { return false; }
+}
+function emptyState() { return { version: 1, requirements: [], records: {} }; }
+function loadState() {
+  if (!storageOK) return emptyState();
+  var raw;
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { return emptyState(); }
+  if (!raw) return emptyState();
+  try {
+    var data = JSON.parse(raw);
+    if (!data || typeof data !== 'object' || !Array.isArray(data.requirements)
+        || !data.records || typeof data.records !== 'object') throw new Error('bad shape');
+    return { version: 1, requirements: data.requirements, records: data.records };
+  } catch (e) {
+    try {
+      localStorage.setItem(STORAGE_KEY + ':corrupt-' + Date.now(), raw);
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (_) {}
+    showBanner('⚠ 本地数据损坏，已重置。原数据已备份到 localStorage 的 corrupt 键中，可通过导出工具找回。');
+    return emptyState();
+  }
+}
+function persist() {
+  state.updatedAt = new Date().toISOString();
+  if (!storageOK) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    showToast('存储空间不足，请导出备份后删除部分历史数据', 'error');
+  }
+}
+
+/* ===== 4. state & actions ===== */
+var state = emptyState();
+
+function addRequirement(data) {
+  var req = {
+    id: uid(),
+    title: data.title,
+    proposer: data.proposer,
+    priority: PRIORITY[data.priority] ? data.priority : 'medium',
+    status: STATUS[data.status] ? data.status : 'doing',
+    createdAt: data.createdAt,
+    updatedAt: todayKey()
+  };
+  state.requirements.push(req);
+  persist();
+  return req;
+}
+function updateRequirement(id, data) {
+  var req = findReq(id);
+  if (!req) return;
+  req.title = data.title;
+  req.proposer = data.proposer;
+  req.priority = data.priority;
+  req.status = data.status;
+  req.createdAt = data.createdAt;
+  req.updatedAt = todayKey();
+  persist();
+}
+function deleteRequirement(id) {
+  state.requirements = state.requirements.filter(function (r) { return r.id !== id; });
+  Object.keys(state.records).forEach(function (k) {
+    if (k.indexOf(id + '|') === 0) delete state.records[k];
+  });
+  persist();
+}
+function setRecord(reqId, dateKey, done, note) {
+  var key = reqId + '|' + dateKey;
+  note = String(note || '').trim();
+  if (!done && !note) delete state.records[key]; // 空格子不占存储
+  else state.records[key] = { done: !!done, note: note };
+  persist();
+}
+function findReq(id) {
+  for (var i = 0; i < state.requirements.length; i++) {
+    if (state.requirements[i].id === id) return state.requirements[i];
+  }
+  return null;
+}
+
+/* ===== 5. weekcalc（周计算，纯函数） ===== */
+function buildWeeks(reqs, tKey) {
+  var today = fromKey(tKey);
+  var end = startOfWeek(today);
+  var startK = tKey;
+  var created = reqs.map(function (r) { return r.createdAt; })
+                    .filter(isValidDateKey).sort();
+  if (created.length) startK = created[0];
+  var cur = startOfWeek(fromKey(startK));
+  if (cur > end) cur = end; // 创建日期在未来时 clamp 到本周
+  var weeks = [];
+  while (cur <= end) {
+    var iw = isoWeekOf(cur);
+    var monday = cur;
+    weeks.push({
+      mondayKey: toKey(monday),
+      label: '第' + iw.week + '周',
+      range: md(monday) + ' – ' + md(addDays(monday, 6)),
+      isCurrent: monday.getTime() === end.getTime(),
+      days: (function (m) {
+        return Array.from({ length: 7 }, function (_, i) {
+          var d = addDays(m, i), k = toKey(d);
+          return {
+            key: k, label: DOW_NAMES[i], dateLabel: md(d),
+            isToday: k === tKey, isFuture: k > tKey, isWeekend: i >= 5
+          };
+        });
+      })(monday)
+    });
+    cur = addDays(cur, 7); // 终点取自"今天" → 新一周打开页面自动多出一组列
+  }
+  return weeks;
+}
+
+/* ===== 6. computeView / computeSummary ===== */
+function computeView(st, tKey) {
+  var weeks = buildWeeks(st.requirements, tKey);
+  var rows = st.requirements.map(function (req) {
+    var weekStats = weeks.map(function (w) {
+      var done = 0, fillable = 0;
+      w.days.forEach(function (d) {
+        if (d.key >= req.createdAt) {
+          fillable++;
+          var rec = st.records[req.id + '|' + d.key];
+          if (rec && rec.done) done++;
+        }
+      });
+      return { done: done, fillable: fillable };
+    });
+    var totalDone = 0;
+    for (var k in st.records) {
+      if (k.indexOf(req.id + '|') === 0 && st.records[k].done) totalDone++;
+    }
+    return { req: req, weekStats: weekStats, totalDone: totalDone };
+  });
+  return { weeks: weeks, rows: rows, summary: computeSummary(st, tKey) };
+}
+function computeSummary(st, tKey) {
+  var mondayKey = toKey(startOfWeek(fromKey(tKey)));
+  var mon = fromKey(mondayKey);
+  var weekDone = 0;
+  for (var i = 0; i < 7; i++) {
+    var k = toKey(addDays(mon, i));
+    st.requirements.forEach(function (r) {
+      var rec = st.records[r.id + '|' + k];
+      if (rec && rec.done) weekDone++;
+    });
+  }
+  return {
+    total: st.requirements.length,
+    doing: st.requirements.filter(function (r) { return r.status === 'doing'; }).length,
+    weekDone: weekDone
+  };
+}
+
+/* ===== 7. render ===== */
+var tableWrap = document.getElementById('tableWrap');
+var summaryEl = document.getElementById('summary');
+var bannerEl = document.getElementById('banner');
+var lastTodayKey = todayKey();
+var editing = null; // { reqId, dateKey, td }
+
+function render() {
+  if (editing) commitNote(); // 守卫：外部触发重渲染前先提交进行中的备注编辑
+  var sl = tableWrap.scrollLeft, stp = tableWrap.scrollTop;
+  var view = computeView(state, lastTodayKey);
+  if (view.rows.length === 0) {
+    tableWrap.innerHTML = buildEmpty();
+  } else {
+    tableWrap.innerHTML = '<table id="grid">' + buildColgroup(view.weeks)
+      + buildHead(view.weeks) + buildBody(view) + '</table>';
+  }
+  tableWrap.scrollLeft = sl; tableWrap.scrollTop = stp; // 恢复滚动位置
+  renderSummary(view.summary);
+}
+function buildColgroup(weeks) {
+  var h = '<colgroup><col style="width:' + STICKY_COL_W + 'px">';
+  weeks.forEach(function () {
+    for (var i = 0; i < 7; i++) h += '<col style="width:116px">';
+    h += '<col style="width:52px">';
+  });
+  return h + '</colgroup>';
+}
+function buildHead(weeks) {
+  var h = '<thead><tr class="week-row"><th class="corner" rowspan="2">需求</th>';
+  weeks.forEach(function (w) {
+    h += '<th class="week-head' + (w.isCurrent ? ' current' : '') + '" colspan="8">'
+      + w.label + '<span class="range">' + w.range + '</span></th>';
+  });
+  h += '</tr><tr class="day-row">';
+  weeks.forEach(function (w) {
+    w.days.forEach(function (d) {
+      h += '<th class="day-head' + (d.isToday ? ' today' : '') + (d.isWeekend ? ' weekend' : '') + '">'
+        + d.label + '<span>' + d.dateLabel + '</span></th>';
+    });
+    h += '<th class="stat-head">计</th>';
+  });
+  return h + '</tr></thead>';
+}
+function buildBody(view) {
+  var h = '<tbody>';
+  view.rows.forEach(function (row) {
+    h += '<tr data-req="' + row.req.id + '">' + buildReqCell(row);
+    view.weeks.forEach(function (w, wi) {
+      w.days.forEach(function (d) { h += buildDayCell(row.req, d); });
+      h += buildWeekStatCell(row, wi, w);
+    });
+    h += '</tr>';
+  });
+  return h + '</tbody>';
+}
+function buildReqCell(row) {
+  var r = row.req;
+  return '<th scope="row" class="req-cell' + (r.status === 'done' ? ' row-done' : '') + '">'
+    + '<div class="req-top"><div class="req-title" title="' + esc(r.title) + '">' + esc(r.title) + '</div>'
+    + '<div class="req-actions">'
+    + '<button class="icon-btn" data-action="edit-req" data-req="' + r.id + '" title="编辑需求">✎</button>'
+    + '<button class="icon-btn danger" data-action="del-req" data-req="' + r.id + '" title="删除需求">🗑</button>'
+    + '</div></div>'
+    + '<div class="req-meta"><span class="proposer">👤 ' + esc(r.proposer) + '</span>'
+    + '<span class="badge prio-' + r.priority + '">' + PRIORITY[r.priority] + '</span>'
+    + '<span class="badge st-' + r.status + '">' + STATUS[r.status] + '</span></div>'
+    + '<div class="req-total">累计完成 <span class="req-total-days">' + row.totalDone + '</span> 天 · 创建于 ' + esc(r.createdAt) + '</div>'
+    + '</th>';
+}
+function buildDayCell(req, day) {
+  var cls = ['day-cell'];
+  if (day.isWeekend) cls.push('weekend');
+  if (day.isToday) cls.push('today-col');
+  if (day.isFuture) cls.push('future');
+  if (day.key < req.createdAt) { // 需求创建前的格子：不可交互灰壳
+    cls.push('before-create');
+    return '<td class="' + cls.join(' ') + '" title="该需求尚未创建"></td>';
+  }
+  var rec = state.records[req.id + '|' + day.key] || null;
+  var done = !!(rec && rec.done);
+  if (done) cls.push('done');
+  var note = rec && rec.note ? rec.note : '';
+  return '<td class="' + cls.join(' ') + '" data-req="' + req.id + '" data-date="' + day.key + '">'
+    + '<input type="checkbox" data-action="toggle-done"' + (done ? ' checked' : '') + ' title="勾选当天完成">'
+    + '<div class="note' + (note ? '' : ' empty') + '" data-action="edit-note" title="'
+    + (note ? esc(note) : '点击填写进度备注') + '">' + (note ? esc(note) : '＋') + '</div>'
+    + '</td>';
+}
+function buildWeekStatCell(row, wi, w) {
+  var s = row.weekStats[wi];
+  var full = s.fillable > 0 && s.done >= s.fillable;
+  return '<td class="week-stat' + (full ? ' full' : '') + '" data-week="' + w.mondayKey + '">'
+    + '<span class="chip' + (full ? ' full' : '') + '" title="本周完成 ' + s.done + '/' + s.fillable + ' 天">'
+    + s.done + '/' + s.fillable + '</span></td>';
+}
+function buildEmpty() {
+  return '<div class="empty"><div class="empty-icon">📋</div>'
+    + '<h2>还没有需求</h2>'
+    + '<p>添加第一个需求，即可按周、按天跟踪每个项目的进展</p>'
+    + '<button class="btn primary" data-action="empty-add">＋ 添加需求</button></div>';
+}
+function renderSummary(s) {
+  summaryEl.innerHTML = '共 <b>' + s.total + '</b> 条需求 · 进行中 <b>' + s.doing
+    + '</b> · 本周完成 <b>' + s.weekDone + '</b> 天';
+}
+function showBanner(msg) {
+  bannerEl.textContent = msg;
+  bannerEl.classList.remove('hidden');
+}
+var toastTimer = null;
+function showToast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.className = 'toast'; }, 2600);
+}
+function scrollToCurrentWeek(flash) {
+  var head = tableWrap.querySelector('.week-head.current');
+  if (!head) return;
+  var dl = head.getBoundingClientRect().left - tableWrap.getBoundingClientRect().left;
+  tableWrap.scrollLeft = Math.max(0, tableWrap.scrollLeft + dl - STICKY_COL_W - 8);
+  if (flash !== false) {
+    head.classList.remove('flash');
+    void head.offsetWidth; // 重置动画
+    head.classList.add('flash');
+  }
+}
+
+/* ===== 8. 备注 click-to-edit ===== */
+function enterEdit(noteDiv) {
+  if (editing) commitNote();
+  var td = noteDiv.closest('td.day-cell');
+  editing = { reqId: td.dataset.req, dateKey: td.dataset.date, td: td };
+  var rec = state.records[editing.reqId + '|' + editing.dateKey];
+  var ta = document.createElement('textarea');
+  ta.className = 'note-editor';
+  ta.rows = 2;
+  ta.maxLength = 300;
+  ta.value = rec && rec.note ? rec.note : '';
+  ta.placeholder = '今天进展…（Ctrl+Enter 保存，Esc 取消）';
+  noteDiv.replaceWith(ta);
+  ta.focus();
+  ta.addEventListener('blur', function () { if (editing) commitNote(); });
+  ta.addEventListener('keydown', function (e) {
+    e.stopPropagation();
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitNote(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelNote(); }
+  });
+}
+function restoreNoteDiv(td, reqId, dateKey) {
+  var ta = td.querySelector('textarea.note-editor');
+  var rec = state.records[reqId + '|' + dateKey];
+  var val = rec && rec.note ? rec.note : '';
+  var div = document.createElement('div');
+  div.className = 'note' + (val ? '' : ' empty');
+  div.dataset.action = 'edit-note';
+  div.title = val || '点击填写进度备注';
+  div.textContent = val || '＋';
+  if (ta) ta.replaceWith(div);
+}
+function commitNote() {
+  if (!editing) return;
+  var e = editing; editing = null;
+  var ta = e.td.querySelector('textarea.note-editor');
+  var val = ta ? ta.value : '';
+  var rec = state.records[e.reqId + '|' + e.dateKey];
+  setRecord(e.reqId, e.dateKey, rec ? rec.done : false, val);
+  restoreNoteDiv(e.td, e.reqId, e.dateKey); // 局部还原，不全量重渲染（避免滚动跳动/点击丢失）
+}
+function cancelNote() {
+  if (!editing) return;
+  var e = editing; editing = null;
+  restoreNoteDiv(e.td, e.reqId, e.dateKey);
+}
+
+/* ===== 9. checkbox 局部 patch ===== */
+function patchAfterToggle(td) {
+  var tr = td.closest('tr');
+  var reqId = td.dataset.req;
+  var req = findReq(reqId);
+  if (!req || !tr) return;
+  var mondayKey = toKey(startOfWeek(fromKey(td.dataset.date)));
+  var statTd = tr.querySelector('.week-stat[data-week="' + mondayKey + '"]');
+  if (statTd) {
+    var done = 0, fillable = 0, mon = fromKey(mondayKey);
+    for (var i = 0; i < 7; i++) {
+      var k = toKey(addDays(mon, i));
+      if (k >= req.createdAt) {
+        fillable++;
+        var rec = state.records[reqId + '|' + k];
+        if (rec && rec.done) done++;
+      }
+    }
+    var full = fillable > 0 && done >= fillable;
+    statTd.classList.toggle('full', full);
+    statTd.innerHTML = '<span class="chip' + (full ? ' full' : '') + '" title="本周完成 ' + done + '/'
+      + fillable + ' 天">' + done + '/' + fillable + '</span>';
+  }
+  var totalEl = tr.querySelector('.req-total-days');
+  if (totalEl) {
+    var n = 0;
+    for (var key in state.records) {
+      if (key.indexOf(reqId + '|') === 0 && state.records[key].done) n++;
+    }
+    totalEl.textContent = n;
+  }
+  renderSummary(computeSummary(state, lastTodayKey));
+}
+
+/* ===== 10. 模态框：需求表单 / 确认框 / 导入确认 ===== */
+var reqModal = document.getElementById('reqModal');
+var reqForm = document.getElementById('reqForm');
+var editingReqId = null;
+
+function openReqModal(req) {
+  editingReqId = req ? req.id : null;
+  document.getElementById('reqModalTitle').textContent = req ? '编辑需求' : '添加需求';
+  reqForm.elements.title.value = req ? req.title : '';
+  reqForm.elements.proposer.value = req ? req.proposer : '';
+  reqForm.elements.createdAt.max = lastTodayKey;
+  reqForm.elements.createdAt.value = req ? req.createdAt : lastTodayKey;
+  reqForm.elements.status.value = req ? req.status : 'doing';
+  var prio = req ? req.priority : 'medium';
+  reqForm.querySelectorAll('input[name=priority]').forEach(function (r) { r.checked = (r.value === prio); });
+  reqModal.classList.remove('hidden');
+  setTimeout(function () { reqForm.elements.title.focus(); }, 30);
+}
+function closeReqModal() {
+  reqModal.classList.add('hidden');
+  editingReqId = null;
+}
+reqForm.addEventListener('submit', function (e) {
+  e.preventDefault();
+  var title = reqForm.elements.title.value.trim();
+  var proposer = reqForm.elements.proposer.value.trim();
+  if (!title || !proposer) { showToast('请填写需求描述和提出人', 'error'); return; }
+  var createdAt = reqForm.elements.createdAt.value;
+  if (!isValidDateKey(createdAt) || createdAt > lastTodayKey) createdAt = lastTodayKey;
+  var data = {
+    title: title, proposer: proposer,
+    priority: reqForm.elements.priority.value,
+    status: reqForm.elements.status.value,
+    createdAt: createdAt
+  };
+  var wasEdit = !!editingReqId;
+  if (wasEdit) { updateRequirement(editingReqId, data); }
+  else { addRequirement(data); }
+  closeReqModal();
+  render();
+  showToast(wasEdit ? '已保存修改' : '已添加需求「' + title + '」');
+  scrollToCurrentWeek(!wasEdit);
+});
+reqModal.addEventListener('click', function (e) {
+  if (e.target === reqModal || e.target.closest('[data-close]')) closeReqModal();
+});
+
+// 通用确认框（Promise<boolean>）
+function confirmDialog(opts) {
+  return new Promise(function (resolve) {
+    var mask = document.createElement('div');
+    mask.className = 'modal-mask';
+    mask.innerHTML = '<div class="modal small"><h3>' + esc(opts.title) + '</h3>'
+      + '<p class="confirm-msg">' + esc(opts.message) + '</p>'
+      + '<div class="modal-actions"><button class="btn" data-v="0">取消</button>'
+      + '<button class="btn ' + (opts.danger ? 'danger' : 'primary') + '" data-v="1">'
+      + esc(opts.okLabel || '确定') + '</button></div></div>';
+    document.body.appendChild(mask);
+    function close(v) {
+      mask.remove();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(v);
+    }
+    function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); close(false); } }
+    mask.addEventListener('click', function (e) {
+      if (e.target === mask) return close(false);
+      var b = e.target.closest('button[data-v]');
+      if (b) close(b.dataset.v === '1');
+    });
+    document.addEventListener('keydown', onKey, true);
+    mask.querySelector('button[data-v="1"]').focus();
+  });
+}
+// 导入确认框（Promise<'overwrite'|'merge'|null>）
+function importDialog(info) {
+  return new Promise(function (resolve) {
+    var dropped = (info.droppedReq || 0) + (info.droppedRec || 0);
+    var mask = document.createElement('div');
+    mask.className = 'modal-mask';
+    mask.innerHTML = '<div class="modal small"><h3>导入数据</h3>'
+      + '<p class="confirm-msg">文件中包含 <b>' + info.reqs.length + '</b> 条需求、<b>'
+      + Object.keys(info.records).length + '</b> 条每日记录'
+      + (dropped ? '（已忽略 ' + dropped + ' 条非法数据）' : '') + '。</p>'
+      + '<p class="form-hint">合并：与当前数据取并集，同一条以文件内容为准。<br>覆盖：清空当前数据，完全替换为文件内容。建议先导出当前数据备份。</p>'
+      + '<div class="modal-actions"><button class="btn" data-v="">取消</button>'
+      + '<button class="btn" data-v="merge">合并</button>'
+      + '<button class="btn primary" data-v="overwrite">覆盖</button></div></div>';
+    document.body.appendChild(mask);
+    function close(v) {
+      mask.remove();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(v || null);
+    }
+    function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); close(null); } }
+    mask.addEventListener('click', function (e) {
+      if (e.target === mask) return close(null);
+      var b = e.target.closest('button[data-v]');
+      if (b) close(b.dataset.v);
+    });
+    document.addEventListener('keydown', onKey, true);
+    mask.querySelector('button[data-v="merge"]').focus();
+  });
+}
+
+/* ===== 11. 导出 / 导入 ===== */
+function exportState() {
+  try {
+    var blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '需求进度备份-' + todayKey() + '.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    showToast('已导出 JSON 备份');
+  } catch (e) { showToast('导出失败：' + e.message, 'error'); }
+}
+function validateImport(raw) {
+  var data;
+  try { data = JSON.parse(raw); }
+  catch (e) { return { ok: false, error: '文件不是合法的 JSON' }; }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.requirements)) {
+    return { ok: false, error: '缺少 requirements 数组，不是本工具导出的格式' };
+  }
+  var reqs = [], ids = {}, droppedReq = 0;
+  data.requirements.forEach(function (r, i) {
+    if (!r || typeof r !== 'object') { droppedReq++; return; }
+    var title = String(r.title == null ? '' : r.title).trim();
+    if (!title) { droppedReq++; return; }
+    var id = (typeof r.id === 'string' && r.id) ? r.id : uid();
+    if (ids[id]) id = id + '-' + i; // 去重
+    ids[id] = true;
+    reqs.push({
+      id: id, title: title,
+      proposer: String(r.proposer == null ? '' : r.proposer).trim() || '未知',
+      priority: PRIORITY[r.priority] ? r.priority : 'medium',
+      status: STATUS[r.status] ? r.status : 'doing',
+      createdAt: isValidDateKey(r.createdAt) ? r.createdAt : todayKey(),
+      updatedAt: isValidDateKey(r.updatedAt) ? r.updatedAt : todayKey()
+    });
+  });
+  var records = {}, droppedRec = 0;
+  var recs = (data.records && typeof data.records === 'object') ? data.records : {};
+  Object.keys(recs).forEach(function (k) {
+    var parts = k.split('|'), v = recs[k];
+    if (parts.length !== 2 || !ids[parts[0]] || !isValidDateKey(parts[1])
+        || !v || typeof v !== 'object') { droppedRec++; return; }
+    var done = !!v.done, note = String(v.note == null ? '' : v.note).trim();
+    if (!done && !note) return; // 空记录不导入
+    records[k] = { done: done, note: note };
+  });
+  return { ok: true, reqs: reqs, records: records, droppedReq: droppedReq, droppedRec: droppedRec };
+}
+function applyImport(info, mode) {
+  if (mode === 'overwrite') {
+    state.requirements = info.reqs;
+    state.records = info.records;
+  } else { // merge：并集，冲突以导入文件为准
+    var byId = new Map(state.requirements.map(function (r) { return [r.id, r]; }));
+    info.reqs.forEach(function (r) { byId.set(r.id, r); });
+    state.requirements = Array.from(byId.values());
+    Object.assign(state.records, info.records);
+  }
+  persist();
+}
+function handleImportFile(e) {
+  var file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function () {
+    var info = validateImport(String(reader.result));
+    if (!info.ok) { showToast(info.error, 'error'); return; }
+    if (!info.reqs.length) { showToast('文件中没有有效的需求数据', 'error'); return; }
+    importDialog(info).then(function (mode) {
+      if (!mode) return;
+      applyImport(info, mode);
+      render();
+      scrollToCurrentWeek(false);
+      showToast(mode === 'overwrite' ? '已覆盖导入 ' + info.reqs.length + ' 条需求'
+                                     : '已合并导入 ' + info.reqs.length + ' 条需求');
+    });
+  };
+  reader.onerror = function () { showToast('读取文件失败', 'error'); };
+  reader.readAsText(file, 'utf-8');
+}
+
+/* ===== 12. 事件绑定（委托） ===== */
+function handleDelete(id) {
+  var req = findReq(id);
+  if (!req) return;
+  confirmDialog({
+    title: '删除需求',
+    message: '确定删除「' + req.title + '」及其全部每日记录吗？此操作不可撤销。',
+    okLabel: '删除',
+    danger: true
+  }).then(function (ok) {
+    if (!ok) return;
+    deleteRequirement(id);
+    render();
+    showToast('已删除「' + req.title + '」');
+  });
+}
+tableWrap.addEventListener('change', function (e) {
+  var cb = e.target.closest('input[data-action="toggle-done"]');
+  if (!cb) return;
+  var td = cb.closest('td.day-cell');
+  var rec = state.records[td.dataset.req + '|' + td.dataset.date];
+  setRecord(td.dataset.req, td.dataset.date, cb.checked, rec ? rec.note : '');
+  td.classList.toggle('done', cb.checked);
+  patchAfterToggle(td);
+});
+tableWrap.addEventListener('click', function (e) {
+  var el = e.target.closest('[data-action]');
+  if (!el) return;
+  var action = el.dataset.action;
+  if (action === 'edit-note') { enterEdit(el); }
+  else if (action === 'edit-req') { openReqModal(findReq(el.dataset.req)); }
+  else if (action === 'del-req') { handleDelete(el.dataset.req); }
+  else if (action === 'empty-add') { openReqModal(null); }
+});
+function bindToolbar() {
+  document.getElementById('btnAdd').addEventListener('click', function () { openReqModal(null); });
+  document.getElementById('btnLocate').addEventListener('click', function () { scrollToCurrentWeek(true); });
+  document.getElementById('btnExport').addEventListener('click', exportState);
+  document.getElementById('btnImport').addEventListener('click', function () {
+    document.getElementById('fileImport').click();
+  });
+  document.getElementById('fileImport').addEventListener('change', handleImportFile);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !reqModal.classList.contains('hidden')) closeReqModal();
+  });
+}
+
+/* ===== 13. 跨日/跨周检测（长期开着页面时自动长出新的一周） ===== */
+function checkDayChange() {
+  var k = todayKey();
+  if (k !== lastTodayKey) {
+    lastTodayKey = k;
+    render();
+    scrollToCurrentWeek(false);
+  }
+}
+
+/* ===== 14. init ===== */
+function init() {
+  storageOK = probeStorage();
+  if (!storageOK) {
+    showBanner('⚠ 当前浏览器无法保存数据（localStorage 不可用），关闭页面后数据将丢失，请及时用「导出」按钮保存 JSON 备份。');
+  }
+  state = loadState();
+  lastTodayKey = todayKey();
+  bindToolbar();
+  render();
+  if (state.requirements.length) scrollToCurrentWeek(false);
+  setInterval(checkDayChange, 60000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) checkDayChange();
+  });
+}
+init();
+})();
+</script>
+</body>
+</html>
